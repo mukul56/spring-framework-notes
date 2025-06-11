@@ -219,3 +219,174 @@ This bean will only be created **if**:
 | Combined control                       | Use both together        |
 
 ---
+
+
+
+Absolutely! This is a **core feature in Spring Boot**—using **profile-specific property files** like `application-dev.properties`, `application-qa.properties`, etc. Let’s cover this deeply.
+
+---
+
+## 1️⃣ **How Profile-specific Property Files Work**
+
+### **Naming Convention**
+
+* Spring Boot looks for property files named:
+
+  * `application.properties` (default)
+  * `application-{profile}.properties` (profile-specific)
+
+**Example:**
+
+* `application.properties` – base/default config for all environments
+* `application-dev.properties` – overrides for `dev` profile
+* `application-qa.properties` – overrides for `qa` profile
+
+---
+
+## 2️⃣ **How Spring Loads These Files**
+
+### **Load Order**
+
+1. Loads `application.properties`
+2. If a profile is active (e.g., `dev`), **loads and overrides** with values from `application-dev.properties`
+3. You can have **multiple profiles active**—Spring merges and resolves precedence
+
+---
+
+## 3️⃣ **How to Activate a Profile**
+
+* **Via application.properties:**
+
+  ```properties
+  spring.profiles.active=dev
+  ```
+* **Or via command line:**
+
+  ```bash
+  java -jar app.jar --spring.profiles.active=qa
+  ```
+* **Or via environment variable:**
+
+  ```bash
+  export SPRING_PROFILES_ACTIVE=prod
+  ```
+
+---
+
+## 4️⃣ **Practical Example**
+
+### **File Structure**
+
+```
+src/main/resources/
+├── application.properties
+├── application-dev.properties
+└── application-qa.properties
+```
+
+### **application.properties**
+
+```properties
+logging.level=INFO
+app.title=MyApp
+```
+
+### **application-dev.properties**
+
+```properties
+logging.level=DEBUG
+app.title=MyApp [DEV]
+database.url=jdbc:h2:mem:devdb
+```
+
+### **application-qa.properties**
+
+```properties
+logging.level=INFO
+app.title=MyApp [QA]
+database.url=jdbc:mysql://qa-db-server/app
+```
+
+---
+
+### **Usage**
+
+* When you run with **dev** profile active:
+
+  * `logging.level` → `DEBUG`
+  * `app.title` → `MyApp [DEV]`
+  * `database.url` → `jdbc:h2:mem:devdb`
+
+* When you run with **qa** profile active:
+
+  * `logging.level` → `INFO`
+  * `app.title` → `MyApp [QA]`
+  * `database.url` → `jdbc:mysql://qa-db-server/app`
+
+* If **no profile is active**:
+
+  * Only `application.properties` is used
+
+---
+
+## 5️⃣ **Advanced: YAML Format**
+
+You can also use YAML:
+
+```yaml
+# application.yml
+spring:
+  profiles:
+    active: dev
+
+---
+spring:
+  profiles: dev
+database:
+  url: jdbc:h2:mem:devdb
+
+---
+spring:
+  profiles: qa
+database:
+  url: jdbc:mysql://qa-db-server/app
+```
+
+---
+
+## 6️⃣ **How it Helps with Profiles**
+
+* Property values are **switched automatically** depending on the active profile.
+* Great for managing **database URLs, logging levels, API endpoints, feature flags**, etc.
+* Combine this with `@Profile` or `@ConditionalOnProperty` to wire up beans/configurations and **complete environment separation**.
+
+---
+
+## 7️⃣ **Best Practices**
+
+* Keep secrets (like passwords) out of VCS—use environment variables or externalized configs for sensitive info.
+* Keep `application.properties` for defaults; **only override what’s necessary** in profile-specific files.
+
+---
+
+## 8️⃣ **Common Pitfall**
+
+* If `spring.profiles.active` is not set, **profile-specific files won’t be loaded**.
+* Always double-check file naming: must be `application-{profile}.properties`.
+
+---
+
+### **Summary Table**
+
+| Profile | Config File Loaded         | Usage Scenario            |
+| ------- | -------------------------- | ------------------------- |
+| Default | application.properties     | Always loaded             |
+| Dev     | application-dev.properties | Only when `dev` is active |
+| QA      | application-qa.properties  | Only when `qa` is active  |
+
+---
+
+**In short:**
+Profile-specific property files let you manage environment-specific configs with zero code change—just set the profile and Spring Boot does the rest!
+
+---
