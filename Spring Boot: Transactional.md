@@ -741,3 +741,190 @@ However, it's still conceptually important to understand that the inner `@Transa
 **In summary:** When you have multiple `@Transactional` methods in the same class and one calls another, be highly aware of the self-invocation problem. The best practice is almost always to refactor the logic into separate Spring-managed beans to ensure that Spring's AOP proxies can correctly intercept the calls and apply the intended transactional behavior.
 
 
+
+### what if some non tranctions methods call transaction methods and vice-versa
+
+
+Okay, this is a very common and important scenario to understand! It clarifies the precise boundaries of your transactions.
+
+Let's break down what happens when a `@Transactional` method interacts with a method that *does not* have the `@Transactional` annotation, whether they are in the same class or different classes.
+
+---
+
+### Scenario 1: `@Transactional` Method Calls a Non-Transactional Method
+
+**Behavior:**
+If a method annotated with `@Transactional` calls another method that is **not** annotated with `@Transactional`, the non-transactional method will execute **within the context of the calling transaction**.
+
+**Explanation:**
+The transaction boundary is established by the `@Transactional` annotation on the *calling method*. Once a transaction is active, any database operations performed within that thread's context (whether directly by the calling method or by any methods it subsequently calls, regardless of their own `@Transactional` status) will typically be part of that active transaction.
+
+The non-transactional method itself doesn't introduce any new transaction management logic. It simply performs its work, and if that work involves interacting with transactional resources (like a database through JPA or JDBC), those operations will implicitly participate in the currently active transaction.
+
+**Code Example:**
+
+```java
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class OrderService {
+
+    private final ProductRepository productRepository; // Injected
+    private final EmailService emailService; // Injected
+
+    public OrderService(ProductRepository productRepository, EmailService emailService) {
+        this.productRepository = productRepository;
+        this.emailService = emailService;
+    }
+
+    @Transactional // This method establishes the transaction boundary
+    public void createOrder(Long productId, int quantity) {
+        // --- Transaction A begins here ---
+
+        // 1. Decrease product stock (DB operation)
+        // This is part of Transaction A
+        productRepository.decreaseStock(productId, quantity);
+
+        // 2. Calculate shipping cost (Non-transactional business logic)
+        // This method does NOT have @Transactional
+        BigDecimal shippingCost = calculateShippingCost(quantity);
+        System.out.println("Calculated shipping cost: " + shippingCost);
+
+        // 3. Save order details (DB operation)
+        // This is part of Transaction A
+        // orderRepository.save(new Order(...));
+
+        // 4. Send confirmation email (Non-transactional external interaction)
+        // This method does NOT have @Transactional
+        emailService.sendConfirmationEmail("user@example.com", "Order confirmed!");
+
+        // Simulate a failure in the main order process
+        if (quantity > 100) {
+            throw new RuntimeException("Order quantity too high!");
+        }
+
+        // --- Transaction A commits here if no exception ---
+    }
+
+    // This method is NOT @Transactional
+    private BigDecimal calculateShippingCost(int quantity) {
+        // Pure business logic, no database interaction
+        return new BigDecimal("5.00").add(new BigDecimal(quantity).multiply(new BigDecimal("0.50")));
+    }
+}
+
+@Service
+public class EmailService {
+    // This method is NOT @Transactional
+    public void sendConfirmationEmail(String to, String subject) {
+        System.out.println("Sending email to: " + to + " Subject: " + subject);
+        // This involves network I/O, not database operations
+    }
+}
+```
+
+**What happens if `createOrder` throws a `RuntimeException` (e.g., `quantity > 100`)?**
+
+* The `productRepository.decreaseStock()` operation will be **rolled back** because it was part of Transaction A.
+* The `orderRepository.save()` operation (if uncommented) would also be **rolled back**.
+* The `calculateShippingCost()` method simply executes its logic.
+* The `emailService.sendConfirmationEmail()` method will still **have been executed**. The email might have already been sent, as sending an email is typically an external, non-transactional operation that doesn't participate in the database transaction. This highlights a common challenge: **the "transactional outbox pattern"** for ensuring consistency between database commits and external actions.
+
+**Key Takeaway:** Any code executed *within* the scope of an active transaction will implicitly be part of that transaction, even if the methods performing the work are not themselves `@Transactional`. The annotation primarily defines the *entry point* and *rules* for the transaction.
+
+---
+
+### Scenario 2: Non-Transactional Method Calls a `@Transactional` Method
+
+**Behavior:**
+This depends entirely on the `Propagation` setting of the `@Transactional` method being called.
+
+**Explanation:**
+When a non-transactional method calls a `@Transactional` method, Spring's AOP proxy for the called method will intercept the call. Since there's no existing transaction for the caller, the proxy will apply the rules defined by the `@Transactional` annotation.
+
+**Code Example:**
+
+```java
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+
+@Service
+public class ReportService {
+
+    private final DataProcessor dataProcessor; // Injected
+
+    public ReportService(DataProcessor dataProcessor) {
+        this.dataProcessor = dataProcessor;
+    }
+
+    // This method is NOT @Transactional
+    public void generateDailyReport() {
+        System.out.println("--- Starting daily report generation (Non-Tx context) ---");
+
+        // Perform some non-transactional aggregation or data preparation
+        // ...
+
+        // Call a transactional method to persist results or perform an atomic update
+        dataProcessor.processAndSaveSummary("Daily Report Data");
+
+        System.out.println("--- Daily report generation finished ---");
+    }
+}
+
+@Service
+public class DataProcessor {
+
+    // private final SummaryRepository summaryRepository; // Injected
+    // ... constructor ...
+
+    @Transactional(propagation = Propagation.REQUIRED) // Default, but explicit here
+    public void processAndSaveSummary(String reportData) {
+        System.out.println("--- Inside processAndSaveSummary (REQUIRED Tx) ---");
+        // This will start a NEW transaction because no transaction exists when called from generateDailyReport
+        // summaryRepository.save(new Summary(reportData));
+        System.out.println("--- processAndSaveSummary (REQUIRED Tx) completed ---");
+    }
+
+    @Transactional(propagation = Propagation.SUPPORTS)
+    public String fetchConfiguration(Long configId) {
+        System.out.println("--- Inside fetchConfiguration (SUPPORTS Tx) ---");
+        // This will execute NON-TRANSACTIONALLY because no transaction exists
+        // configRepository.findById(configId);
+        return "Config Data";
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void mandatoryOperation() {
+        System.out.println("--- Inside mandatoryOperation (MANDATORY Tx) ---");
+        // This will throw IllegalTransactionStateException if called from a non-transactional context
+    }
+}
+```
+
+**Behavior Breakdown:**
+
+* **Calling `dataProcessor.processAndSaveSummary()` (Propagation.REQUIRED):**
+    * Since `generateDailyReport()` is non-transactional, there's no existing transaction.
+    * `processAndSaveSummary()`'s `REQUIRED` propagation rule dictates that it **must** have a transaction. Therefore, Spring will **start a new transaction** for `processAndSaveSummary()`.
+    * This new transaction will commit or roll back independently of `generateDailyReport()`.
+
+* **Calling `dataProcessor.fetchConfiguration()` (Propagation.SUPPORTS):**
+    * Again, `generateDailyReport()` is non-transactional, so no existing transaction.
+    * `fetchConfiguration()`'s `SUPPORTS` propagation rule dictates that it **can** join an existing transaction, but it **does not require one**.
+    * Therefore, `fetchConfiguration()` will execute **non-transactionally**. Database operations within it would typically run in auto-commit mode (if the underlying connection/driver supports it) or simply outside of a managed transaction.
+
+* **Calling `dataProcessor.mandatoryOperation()` (Propagation.MANDATORY):**
+    * If `generateDailyReport()` calls `mandatoryOperation()`, Spring will immediately throw an `IllegalTransactionStateException` because `MANDATORY` requires an existing transaction, and none is present.
+
+### Summary and Edge Cases
+
+* **Transaction Boundaries are Explicit:** The `@Transactional` annotation explicitly marks the entry point and defines the transactional behavior for that method and any code it calls, unless a nested `@Transactional` method explicitly changes the propagation behavior (e.g., `REQUIRES_NEW`).
+* **Non-Transactional Methods within a Transaction:** If a transaction is already active, any methods called within that transaction's scope will implicitly participate in it, even if they aren't annotated themselves. This is because they're using the same underlying resources (like a database connection) that are already bound to the active transaction.
+* **External Resources:** Be mindful of operations that interact with external systems (e.g., sending emails, calling external APIs, writing to message queues). These typically **do not participate** in your database transaction. If your database transaction rolls back, the external action might already have occurred. This is where patterns like the "transactional outbox" or "two-phase commit" (for distributed transactions using JTA) become relevant for ensuring atomicity across different resource types.
+* **Lazy Loading (JPA/Hibernate):** If you fetch entities within a transactional method and then pass them to a non-transactional method, any lazy-loaded associations accessed in the non-transactional method will likely result in a `LazyInitializationException` because the Hibernate session (and thus the underlying database connection) will have been closed when the original transaction completed. This is a classic reason for the Open Session In View pattern (though often discouraged for other reasons) or for explicitly fetching all required data within the transactional boundary.
+
+
+
+
