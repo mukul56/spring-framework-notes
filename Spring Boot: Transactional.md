@@ -542,7 +542,7 @@ public class AuditService {
 
 Within a single Spring application, it is absolutely possible (and sometimes necessary) to have multiple, distinct physical transactions running. The `Propagation` settings dictate how these physical transactions are managed and interact with each another, especially when methods call other transactional methods. `REQUIRES_NEW` is the primary mechanism to achieve truly independent physical transactions in nested calls.
 
-**if in same class we have multiple trasactional methods then ?**
+### **If in same class we have multiple trasactional methods then ?**
 
 This is an excellent follow-up question and brings us directly to one of the most common pitfalls and misunderstood aspects of Spring's `@Transactional` annotation: **the "self-invocation" problem (or internal method call problem).**
 
