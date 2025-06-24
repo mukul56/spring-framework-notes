@@ -1,3 +1,5 @@
+https://onedrive.live.com/view.aspx?resid=6B364628C29FEB52!sb06d0b4b3c6e43888c560d8ed130ea41&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy82YjM2NDYyOGMyOWZlYjUyL0Vrc0xiYkJ1UEloRGpGWU5qdEV3NmtFQjd3UnhlNXdkMm9XWFJFTDlnS3BoRWc&wd=target%28SpringBoot.one%7Cd37c24fe-34a1-2046-885f-ef3807025388%2F27%20%20OneToOne%20Mapping%20%28Unidirectional%20and%20Bidirectional%5C%29%7C2fb9bed0-1ac8-804e-88b5-41ab8776fcf7%2F%29&wdorigin=NavigationUrl
+
 Absolutely, let's do a **deep dive into OneToOne mapping in JPA/Hibernate/Spring Data JPA**, starting from scratch and progressing to advanced details.
 
 ---
